@@ -40,6 +40,9 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
         body: createAppointmentSchema,
         response: {
           201: z.object({ appointmentId: z.number() }),
+          401: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+          400: z.object({ message: z.string() }),
         },
       },
     },

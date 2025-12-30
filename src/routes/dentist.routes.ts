@@ -35,6 +35,8 @@ export const dentistRoutes: FastifyPluginAsyncZod = async (app) => {
         body: createDentistSchema,
         response: {
           201: z.object({ dentistId: z.number() }),
+          401: z.object({ message: z.string() }),
+          400: z.object({ message: z.string() }),
         },
       },
     },

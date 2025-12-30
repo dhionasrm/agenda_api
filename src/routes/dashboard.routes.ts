@@ -23,6 +23,7 @@ export const dashboardRoutes: FastifyPluginAsyncZod = async (app) => {
             consultasProximos7Dias: z.number(),
             dentistasAtivos: z.number(),
           }),
+          401: z.object({ message: z.string() }),
         },
       },
     },

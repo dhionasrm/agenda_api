@@ -1,0 +1,100 @@
+// 1. Configuração do Gerador (Cria os arquivos TypeScript)
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 2. Configuração da Conexão (Lê a variável do .env)
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 3. Mapeamento das Tabelas
+
+// Tabela: DBAgenda_USUARIOS -> No código chamaremos de: User
+model User {
+  id        Int      @id @default(autoincrement())
+  nome      String   @db.VarChar(100)
+  email     String   @unique @db.VarChar(100)
+  senhaHash String   @map("senha_hash") @db.VarChar(255) // "senha_hash" no banco vira "senhaHash" no código
+  perfil    String   // Admin, Atendente, etc.
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relacionamentos
+  logs StatusLog[]
+
+  @@map("DBAgenda_USUARIOS") // Nome real da tabela no banco
+}
+
+// Tabela: DBAgenda_DENTISTAS -> No código chamaremos de: Dentist
+model Dentist {
+  id            Int      @id @default(autoincrement())
+  nome          String   @db.VarChar(100)
+  cro           String   @unique @db.VarChar(20)
+  especialidade String?  @db.VarChar(100)
+  telefone      String?  @db.VarChar(20)
+  email         String?  @db.VarChar(100)
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relacionamentos
+  consultas Appointment[]
+
+  @@map("DBAgenda_DENTISTAS")
+}
+
+// Tabela: DBAgenda_PACIENTES -> No código chamaremos de: Patient
+model Patient {
+  id             Int       @id @default(autoincrement())
+  nome           String    @db.VarChar(100)
+  telefone       String?   @db.VarChar(20)
+  email          String?   @db.VarChar(100)
+  dataNascimento DateTime? @map("data_nascimento") @db.Date
+  observacoes    String?   @db.Text
+  ativo          Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relacionamentos
+  consultas Appointment[]
+
+  @@map("DBAgenda_PACIENTES")
+}
+
+// Tabela: DBAgenda_CONSULTAS -> No código chamaremos de: Appointment
+model Appointment {
+  id             Int      @id @default(autoincrement())
+  pacienteId     Int      @map("paciente_id")
+  dentistaId     Int      @map("dentista_id")
+  dataHoraInicio DateTime @map("data_hora_inicio")
+  dataHoraFim    DateTime @map("data_hora_fim")
+  status         String   @default("agendada") 
+  observacoes    String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relacionamentos (Chaves Estrangeiras)
+  paciente Patient     @relation(fields: [pacienteId], references: [id])
+  dentista Dentist     @relation(fields: [dentistaId], references: [id])
+  logs     StatusLog[]
+
+  @@map("DBAgenda_CONSULTAS")
+}
+
+// Tabela: DBAgenda_CONSULTA_STATUS_LOG -> No código chamaremos de: StatusLog
+model StatusLog {
+  id            Int      @id @default(autoincrement())
+  consultaId    Int      @map("consulta_id")
+  status        String   @db.VarChar(50)
+  dataAlteracao DateTime @default(now()) @map("data_alteracao")
+  usuarioId     Int      @map("usuario_id")
+
+  // Relacionamentos
+  consulta Appointment @relation(fields: [consultaId], references: [id])
+  usuario  User        @relation(fields: [usuarioId], references: [id])
+
+  @@map("DBAgenda_CONSULTA_STATUS_LOG")
+}

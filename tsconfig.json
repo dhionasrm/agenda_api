@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    /* Configurações de Módulos */
+    "target": "es2020",                /* Gera código JS moderno */
+    "module": "commonjs",              /* O padrão que o ts-node-dev entende melhor */
+    "moduleResolution": "node",        /* Resolve módulos estilo Node.js */
+    "esModuleInterop": true,           /* Permite importar pacotes CommonJS como ESM */
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,                    /* Mantém a verificação de tipos forte */
+    "skipLibCheck": true,              /* Pula verificação de arquivos de definição (.d.ts) para ganhar velocidade */
+    
+    /* Configurações de Saída */
+    "outDir": "./dist",                /* Onde ficará o código compilado */
+    "rootDir": "./src",                /* Onde está seu código fonte */
+    
+    /* Desabilitando a regra que causou seu erro */
+    "verbatimModuleSyntax": false      /* <--- ISSO RESOLVE O SEU ERRO */
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}

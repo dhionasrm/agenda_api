@@ -9,6 +9,7 @@ import { patientRoutes } from "./routes/patient.routes";
 import { dentistRoutes } from "./routes/dentist.routes";
 import { appointmentRoutes } from "./routes/appointment.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
+import { notificationRoutes } from "./routes/notification.routes";
 
 export const app = fastify(); // Exportamos o app sem dar listen ainda
 
@@ -53,3 +54,4 @@ app.register(patientRoutes, { prefix: "/api/patients" });
 app.register(dentistRoutes, { prefix: "/api/dentists" });
 app.register(appointmentRoutes, { prefix: "/api/appointments" });
 app.register(dashboardRoutes, { prefix: "/api/dashboard" });
+app.register(notificationRoutes, { prefix: "/api/notifications" });

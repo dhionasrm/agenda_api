@@ -22,6 +22,31 @@ const updateDentistSchema = z.object({
   email: z.string().email().optional(),
 });
 
+const listDentistsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  size: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+const dentistItemSchema = z.object({
+  id: z.number(),
+  nome: z.string(),
+  cro: z.string(),
+  especialidade: z.string().nullable(),
+  telefone: z.string().nullable(),
+  email: z.string().nullable(),
+  ativo: z.boolean(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+const paginatedDentistsSchema = z.object({
+  items: z.array(dentistItemSchema),
+  total: z.number(),
+  page: z.number(),
+  size: z.number(),
+  pages: z.number(),
+});
+
 export const dentistRoutes: FastifyPluginAsyncZod = async (app) => {
   
   // Criar dentista (POST /) - Protegida por JWT
@@ -80,6 +105,11 @@ export const dentistRoutes: FastifyPluginAsyncZod = async (app) => {
         summary: "Listar dentistas",
         tags: ["Dentistas"],
         security: [{ bearerAuth: [] }],
+        querystring: listDentistsQuerySchema,
+        response: {
+          200: paginatedDentistsSchema,
+          401: z.object({ message: z.string() }),
+        },
       },
     },
     async (request, reply) => {
@@ -89,12 +119,28 @@ export const dentistRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.status(401).send({ message: "Unauthorized" });
       }
 
-      const dentists = await prisma.dentist.findMany({
-        where: { ativo: true },
-        orderBy: { nome: 'asc' },
-      });
+      const { page, size } = request.query;
+      const skip = (page - 1) * size;
 
-      return dentists;
+      const [items, total] = await Promise.all([
+        prisma.dentist.findMany({
+          where: { ativo: true },
+          orderBy: { nome: 'asc' },
+          skip,
+          take: size,
+        }),
+        prisma.dentist.count({
+          where: { ativo: true },
+        }),
+      ]);
+
+      return {
+        items,
+        total,
+        page,
+        size,
+        pages: Math.ceil(total / size),
+      };
     }
   );
 

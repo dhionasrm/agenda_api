@@ -60,14 +60,14 @@ export const dashboardRoutes: FastifyPluginAsyncZod = async (app) => {
         where: { ativo: true },
       });
 
-      // Consultas aguardando (agendadas ou confirmadas para hoje)
+      // Consultas aguardando (agendadas, confirmadas ou com check-in feito)
       const aguardando = await prisma.appointment.count({
         where: {
           dataHoraInicio: {
             gte: hoje,
             lte: fimHoje,
           },
-          status: { in: ['agendada', 'confirmada'] },
+          status: { in: ['agendada', 'confirmada', 'aguardando'] },
         },
       });
 

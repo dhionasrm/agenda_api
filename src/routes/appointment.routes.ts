@@ -11,6 +11,11 @@ const createAppointmentSchema = z.object({
   dataHoraInicio: z.coerce.date(),
   dataHoraFim: z.coerce.date(),
   observacoes: z.string().optional(),
+  // Campos adicionais — seção 6.2.3 do PDF
+  procedimento: z.string().max(100).optional(),
+  convenio: z.string().max(100).optional(),
+  valorPrevisto: z.number().positive().optional(),
+  origemAgendamento: z.enum(['recepcao', 'portal_paciente', 'whatsapp', 'telefone', 'outro']).optional(),
 });
 
 // Schema de atualização de consulta
@@ -20,11 +25,73 @@ const updateAppointmentSchema = z.object({
   dataHoraInicio: z.coerce.date().optional(),
   dataHoraFim: z.coerce.date().optional(),
   observacoes: z.string().optional(),
+  procedimento: z.string().max(100).optional(),
+  convenio: z.string().max(100).optional(),
+  valorPrevisto: z.number().positive().optional(),
+  origemAgendamento: z.enum(['recepcao', 'portal_paciente', 'whatsapp', 'telefone', 'outro']).optional(),
 });
 
 // Schema de atualização de status
+// Fluxo completo (PDF seções 6.2.2 e 6.2.7):
+//   agendada → aguardando (check-in) → em_andamento → concluida
+//   Saídas alternativas: confirmada, cancelada, falta (no-show), reagendada
 const updateStatusSchema = z.object({
-  status: z.enum(['agendada', 'confirmada', 'em_andamento', 'concluida', 'cancelada']),
+  status: z.enum([
+    'agendada',      // status inicial
+    'confirmada',    // paciente confirmou presença
+    'aguardando',    // check-in feito, aguardando na recepção (seção 6.2.7)
+    'em_andamento',  // profissional iniciou atendimento
+    'concluida',     // atendimento finalizado
+    'cancelada',     // cancelado
+    'falta',         // não compareceu — no-show (seção 8.7)
+    'reagendada',    // remarcada (seção 8.6)
+  ]),
+});
+
+const listAppointmentsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  size: z.coerce.number().int().min(1).max(100).default(10),
+  pacienteId: z.coerce.number().optional(),
+  dentistaId: z.coerce.number().optional(),
+  status: z.string().optional(),
+  dataInicio: z.coerce.date().optional(),
+  dataFim: z.coerce.date().optional(),
+});
+
+const appointmentItemSchema = z.object({
+  id: z.number(),
+  pacienteId: z.number(),
+  dentistaId: z.number(),
+  dataHoraInicio: z.date(),
+  dataHoraFim: z.date(),
+  status: z.string(),
+  observacoes: z.string().nullable(),
+  procedimento: z.string().nullable(),
+  convenio: z.string().nullable(),
+  valorPrevisto: z.number().nullable(),
+  origemAgendamento: z.string().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  paciente: z.object({
+    id: z.number(),
+    nome: z.string(),
+    telefone: z.string().nullable(),
+    email: z.string().nullable(),
+  }),
+  dentista: z.object({
+    id: z.number(),
+    nome: z.string(),
+    cro: z.string(),
+    especialidade: z.string().nullable(),
+  }),
+});
+
+const paginatedAppointmentsSchema = z.object({
+  items: z.array(appointmentItemSchema),
+  total: z.number(),
+  page: z.number(),
+  size: z.number(),
+  pages: z.number(),
 });
 
 export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -53,7 +120,7 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.status(401).send({ message: "Unauthorized" });
       }
 
-      const { pacienteId, dentistaId, dataHoraInicio, dataHoraFim, observacoes } = request.body;
+      const { pacienteId, dentistaId, dataHoraInicio, dataHoraFim, observacoes, procedimento, convenio, valorPrevisto, origemAgendamento } = request.body;
 
       // Verifica se paciente existe
       const patient = await prisma.patient.findUnique({ where: { id: pacienteId } });
@@ -106,6 +173,10 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
           dataHoraInicio,
           dataHoraFim,
           observacoes,
+          procedimento,
+          convenio,
+          valorPrevisto,
+          origemAgendamento,
         },
       });
 
@@ -130,13 +201,11 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
         summary: "Listar consultas",
         tags: ["Consultas"],
         security: [{ bearerAuth: [] }],
-        querystring: z.object({
-          pacienteId: z.coerce.number().optional(),
-          dentistaId: z.coerce.number().optional(),
-          status: z.string().optional(),
-          dataInicio: z.coerce.date().optional(),
-          dataFim: z.coerce.date().optional(),
-        }),
+        querystring: listAppointmentsQuerySchema,
+        response: {
+          200: paginatedAppointmentsSchema,
+          401: z.object({ message: z.string() }),
+        },
       },
     },
     async (request, reply) => {
@@ -146,31 +215,49 @@ export const appointmentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.status(401).send({ message: "Unauthorized" });
       }
 
-      const { pacienteId, dentistaId, status, dataInicio, dataFim } = request.query;
+      const { page, size, pacienteId, dentistaId, status, dataInicio, dataFim } = request.query;
+      const skip = (page - 1) * size;
 
       const where: any = {};
 
       if (pacienteId) where.pacienteId = pacienteId;
       if (dentistaId) where.dentistaId = dentistaId;
       if (status) where.status = status;
-      if (dataInicio && dataFim) {
-        where.dataHoraInicio = { gte: dataInicio, lte: dataFim };
+      if (dataInicio) {
+        // Normaliza para início do dia
+        const inicio = new Date(dataInicio);
+        inicio.setHours(0, 0, 0, 0);
+        // Se não foi informado dataFim, usa o fim do mesmo dia de dataInicio
+        const fim = dataFim ? new Date(dataFim) : new Date(dataInicio);
+        if (!dataFim) fim.setHours(23, 59, 59, 999);
+        where.dataHoraInicio = { gte: inicio, lte: fim };
       }
 
-      const appointments = await prisma.appointment.findMany({
-        where,
-        include: {
-          paciente: {
-            select: { id: true, nome: true, telefone: true, email: true },
+      const [items, total] = await Promise.all([
+        prisma.appointment.findMany({
+          where,
+          include: {
+            paciente: {
+              select: { id: true, nome: true, telefone: true, email: true },
+            },
+            dentista: {
+              select: { id: true, nome: true, cro: true, especialidade: true },
+            },
           },
-          dentista: {
-            select: { id: true, nome: true, cro: true, especialidade: true },
-          },
-        },
-        orderBy: { dataHoraInicio: 'asc' },
-      });
+          orderBy: { dataHoraInicio: 'asc' },
+          skip,
+          take: size,
+        }),
+        prisma.appointment.count({ where }),
+      ]);
 
-      return appointments;
+      return {
+        items,
+        total,
+        page,
+        size,
+        pages: Math.ceil(total / size),
+      };
     }
   );
 

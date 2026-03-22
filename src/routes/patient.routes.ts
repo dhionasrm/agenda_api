@@ -7,10 +7,37 @@ const prisma = new PrismaClient();
 // Definição dos Schemas (Inputs)
 const createPatientSchema = z.object({
   nome: z.string().min(3, "Nome deve ter no mínimo 3 caracteres"),
+  cpf: z.string().regex(/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/, "CPF inválido").optional(),
   email: z.string().email().optional(),
   telefone: z.string().optional(),
   dataNascimento: z.coerce.date().optional(), // "coerce" transforma string "2023-01-01" em Date
   observacoes: z.string().optional(),
+});
+
+const listPatientsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  size: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+const patientItemSchema = z.object({
+  id: z.number(),
+  nome: z.string(),
+  cpf: z.string().nullable(),
+  email: z.string().nullable(),
+  telefone: z.string().nullable(),
+  dataNascimento: z.date().nullable(),
+  observacoes: z.string().nullable(),
+  ativo: z.boolean(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+const paginatedPatientsSchema = z.object({
+  items: z.array(patientItemSchema),
+  total: z.number(),
+  page: z.number(),
+  size: z.number(),
+  pages: z.number(),
 });
 
 export const patientRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -29,11 +56,12 @@ export const patientRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { nome, email, telefone, dataNascimento, observacoes } = request.body;
+      const { nome, cpf, email, telefone, dataNascimento, observacoes } = request.body;
 
       const patient = await prisma.patient.create({
         data: {
           nome,
+          cpf,
           email,
           telefone,
           dataNascimento,
@@ -52,23 +80,43 @@ export const patientRoutes: FastifyPluginAsyncZod = async (app) => {
       schema: {
         summary: "Listar pacientes",
         tags: ["Pacientes"],
-        security: [{ bearerAuth: [] }], // Indica no Swagger que precisa de token
+        security: [{ bearerAuth: [] }],
+        querystring: listPatientsQuerySchema,
+        response: {
+          200: paginatedPatientsSchema,
+          401: z.object({ message: z.string() }),
+        },
       },
     },
     async (request, reply) => {
-      // Verifica token JWT
       try {
         await request.jwtVerify();
       } catch (err) {
         return reply.status(401).send({ message: "Unauthorized" });
       }
 
-      const patients = await prisma.patient.findMany({
-        where: { ativo: true },
-        orderBy: { nome: 'asc' }
-      });
+      const { page, size } = request.query;
+      const skip = (page - 1) * size;
 
-      return patients;
+      const [items, total] = await Promise.all([
+        prisma.patient.findMany({
+          where: { ativo: true },
+          orderBy: { nome: 'asc' },
+          skip,
+          take: size,
+        }),
+        prisma.patient.count({
+          where: { ativo: true },
+        }),
+      ]);
+
+      return {
+        items,
+        total,
+        page,
+        size,
+        pages: Math.ceil(total / size),
+      };
     }
   );
 
@@ -119,6 +167,7 @@ export const patientRoutes: FastifyPluginAsyncZod = async (app) => {
         }),
         body: z.object({
           nome: z.string().min(3).optional(),
+          cpf: z.string().regex(/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/, "CPF inválido").optional(),
           email: z.string().email().optional(),
           telefone: z.string().optional(),
           dataNascimento: z.coerce.date().optional(),

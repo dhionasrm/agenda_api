@@ -8,8 +8,15 @@ const prisma = new PrismaClient();
 const registerSchema = z.object({
   nome: z.string().min(3, "Nome muito curto"),
   email: z.string().email("E-mail inválido"),
-  senha: z.string().min(6, "A senha precisa de 6 caracteres no mínimo"),
-  perfil: z.enum(['admin', 'atendente', 'dentista']),
+  // Regras de senha conforme copilot-instructions.md §9
+  senha: z.string()
+    .min(8, "A senha precisa de 8 caracteres no mínimo")
+    .regex(/[A-Z]/, "A senha deve conter ao menos uma letra maiúscula")
+    .regex(/[a-z]/, "A senha deve conter ao menos uma letra minúscula")
+    .regex(/[0-9]/, "A senha deve conter ao menos um número")
+    .regex(/[^A-Za-z0-9]/, "A senha deve conter ao menos um caractere especial"),
+  // 5 perfis definidos no PDF §3
+  perfil: z.enum(['admin', 'atendente', 'dentista', 'gestor', 'paciente']),
 });
 
 const loginSchema = z.object({
@@ -20,6 +27,30 @@ const loginSchema = z.object({
 // Schema de erro padrão (para reutilizar)
 const errorSchema = z.object({
   message: z.string(),
+});
+
+const listUsersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  size: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+// senhaHash é explicitamente omitido para nunca vazar na resposta
+const userItemSchema = z.object({
+  id: z.number(),
+  nome: z.string(),
+  email: z.string(),
+  perfil: z.string(),
+  ativo: z.boolean(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+const paginatedUsersSchema = z.object({
+  items: z.array(userItemSchema),
+  total: z.number(),
+  page: z.number(),
+  size: z.number(),
+  pages: z.number(),
 });
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -125,6 +156,63 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         nome: user.nome,
         perfil: user.perfil,
       });
+    }
+  );
+
+  // --- ROTA DE LISTAGEM DE USUÁRIOS ---
+  app.get(
+    "/users",
+    {
+      schema: {
+        summary: "Listar usuários",
+        tags: ["Autenticação"],
+        security: [{ bearerAuth: [] }],
+        querystring: listUsersQuerySchema,
+        response: {
+          200: paginatedUsersSchema,
+          401: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await request.jwtVerify();
+      } catch (err) {
+        return reply.status(401).send({ message: "Unauthorized" });
+      }
+
+      const { page, size } = request.query;
+      const skip = (page - 1) * size;
+
+      const [items, total] = await Promise.all([
+        prisma.user.findMany({
+          where: { ativo: true },
+          orderBy: { nome: 'asc' },
+          skip,
+          take: size,
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+            perfil: true,
+            ativo: true,
+            createdAt: true,
+            updatedAt: true,
+            // senhaHash: omitido intencionalmente
+          },
+        }),
+        prisma.user.count({
+          where: { ativo: true },
+        }),
+      ]);
+
+      return {
+        items,
+        total,
+        page,
+        size,
+        pages: Math.ceil(total / size),
+      };
     }
   );
 };

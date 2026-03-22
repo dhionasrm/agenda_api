@@ -50,6 +50,7 @@ model Dentist {
 model Patient {
   id             Int       @id @default(autoincrement())
   nome           String    @db.VarChar(100)
+  cpf            String?   @unique @db.VarChar(14)        // Seção 6.2.4 do PDF
   telefone       String?   @db.VarChar(20)
   email          String?   @db.VarChar(100)
   dataNascimento DateTime? @map("data_nascimento") @db.Date
@@ -66,15 +67,19 @@ model Patient {
 
 // Tabela: DBAgenda_CONSULTAS -> No código chamaremos de: Appointment
 model Appointment {
-  id             Int      @id @default(autoincrement())
-  pacienteId     Int      @map("paciente_id")
-  dentistaId     Int      @map("dentista_id")
-  dataHoraInicio DateTime @map("data_hora_inicio")
-  dataHoraFim    DateTime @map("data_hora_fim")
-  status         String   @default("agendada") 
-  observacoes    String?  @db.Text
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                Int      @id @default(autoincrement())
+  pacienteId        Int      @map("paciente_id")
+  dentistaId        Int      @map("dentista_id")
+  dataHoraInicio    DateTime @map("data_hora_inicio")
+  dataHoraFim       DateTime @map("data_hora_fim")
+  status            String   @default("agendada")         // agendada | aguardando | confirmada | em_andamento | concluida | cancelada | falta | reagendada
+  observacoes       String?  @db.Text
+  procedimento      String?  @db.VarChar(100)             // Seção 6.2.3 do PDF
+  convenio          String?  @db.VarChar(100)             // Seção 6.2.3 do PDF
+  valorPrevisto     Float?   @map("valor_previsto")       // Seção 6.2.3 do PDF
+  origemAgendamento String?  @map("origem_agendamento") @db.VarChar(50) // Seção 6.2.3: recepcao | portal_paciente | whatsapp | telefone | outro
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relacionamentos (Chaves Estrangeiras)
   paciente Patient     @relation(fields: [pacienteId], references: [id])

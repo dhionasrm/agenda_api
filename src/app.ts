@@ -17,10 +17,13 @@ export const app = fastify(); // Exportamos o app sem dar listen ainda
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
 
-app.register(cors, { origin: "*" });
+app.register(cors, {
+  origin: process.env.FRONTEND_URL || "https://web-koht-one-42.vercel.app",
+  credentials: true,
+});
 
 app.register(jwt, {
-  secret: process.env.JWT_SECRET || "minha-chave-secreta",
+  secret: process.env.JWT_SECRET,
 });
 
 // 2. Swagger
